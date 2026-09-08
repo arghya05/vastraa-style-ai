@@ -1,5 +1,6 @@
 import { Check, Loader2, ShoppingBag, Star } from "lucide-react";
 import { useState } from "react";
+import { resolveProductImage } from "@/lib/vastraa/catalogueImages";
 import { formatPrice, type Product } from "@/lib/vastraa/types";
 
 type Props = {
@@ -32,23 +33,25 @@ export function ProductCard({ product, reason, onAdd, className = "" }: Props) {
     .map(([k, v]) => `${k}: ${v}`)
     .join(" · ");
 
+  const imageSrc = resolveProductImage(product);
+  const details = Object.entries(product.attributes ?? {})
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${v}`);
+
+
   return (
     <div
       className={`flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md ${className}`}
     >
       <div className="relative aspect-[4/5] w-full overflow-hidden bg-secondary">
-        {product.image_url ? (
-          <img
-            src={product.image_url}
-            alt={product.title}
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">
-            No image
-          </div>
-        )}
+        <img
+          src={imageSrc}
+          alt={`${product.title}${product.category ? ` — Vastraa ${product.category}` : ""}`}
+          loading="lazy"
+          width={832}
+          height={1040}
+          className="h-full w-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+        />
         {product.labels?.[0] && (
           <span className="absolute left-2 top-2 rounded-full bg-brand px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-foreground">
             {product.labels[0]}
@@ -57,9 +60,16 @@ export function ProductCard({ product, reason, onAdd, className = "" }: Props) {
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-3">
-        <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-          {product.title}
-        </h4>
+        <div>
+          {product.brand && (
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand">
+              {product.brand}
+            </p>
+          )}
+          <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+            {product.title}
+          </h4>
+        </div>
         <div className="flex items-baseline gap-2">
           <span className="font-display text-lg font-semibold text-foreground">
             {formatPrice(product.price, product.currency)}
@@ -72,6 +82,23 @@ export function ProductCard({ product, reason, onAdd, className = "" }: Props) {
             </span>
           )}
         </div>
+        {product.short_description && (
+          <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+            {product.short_description}
+          </p>
+        )}
+        {details.length > 0 && (
+          <ul className="flex flex-wrap gap-1">
+            {details.map((d) => (
+              <li
+                key={d}
+                className="rounded-full bg-secondary px-2 py-0.5 text-[10px] capitalize text-secondary-foreground"
+              >
+                {d}
+              </li>
+            ))}
+          </ul>
+        )}
         {variant && <p className="text-xs text-muted-foreground">{variant}</p>}
         {reason && <p className="line-clamp-3 text-xs italic text-jewel">{reason}</p>}
 

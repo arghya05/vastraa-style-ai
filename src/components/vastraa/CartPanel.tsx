@@ -1,4 +1,5 @@
 import { ShoppingBag } from "lucide-react";
+import { resolveProductImage } from "@/lib/vastraa/catalogueImages";
 import { formatPrice, type Cart } from "@/lib/vastraa/types";
 
 export function CartPanel({ cart }: { cart: Cart }) {
@@ -25,9 +26,12 @@ export function CartPanel({ cart }: { cart: Cart }) {
           cart.items.map((item, i) => (
             <div key={`${item.product_id}-${i}`} className="flex gap-3">
               <div className="size-16 shrink-0 overflow-hidden rounded-xl bg-secondary">
-                {item.image_url && (
-                  <img src={item.image_url} alt={item.title} className="h-full w-full object-cover" />
-                )}
+                <img
+                  src={resolveProductImage(item)}
+                  alt={item.title}
+                  loading="lazy"
+                  className="h-full w-full object-cover"
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="line-clamp-2 text-sm font-medium text-foreground">{item.title}</p>
