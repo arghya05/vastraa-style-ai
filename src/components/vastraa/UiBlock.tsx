@@ -16,6 +16,9 @@ export function UiBlock({ part, onAdd }: { part: UiPart; onAdd: AddFn }) {
   if (part.component === "comparison") {
     return <ComparisonBlock payload={part.payload as PresentComparisonPayload} onAdd={onAdd} />;
   }
+  if (part.component === "suggestions") {
+    return null;
+  }
   return (
     <div className="rounded-2xl border border-border bg-card p-3">
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
