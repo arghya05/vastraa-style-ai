@@ -31,49 +31,22 @@ export function UiBlock({ part, onAdd }: { part: UiPart; onAdd: AddFn }) {
 function ProductsBlock({ payload, onAdd }: { payload: PresentProductsPayload; onAdd: AddFn }) {
   const items = Array.isArray(payload?.items) ? payload.items : [];
   if (items.length === 0) return null;
-  const layout = payload.layout ?? "carousel";
 
   return (
     <section className="space-y-2">
       {payload.title && (
         <h3 className="text-sm font-semibold text-foreground">{payload.title}</h3>
       )}
-      {layout === "grid" ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {items.map((item, i) => (
-            <ProductCard
-              key={`${item.product?.product_id}-${i}`}
-              product={item.product}
-              reason={item.reason}
-              onAdd={onAdd}
-            />
-          ))}
-        </div>
-      ) : layout === "list" ? (
-        <div className="space-y-3">
-          {items.map((item, i) => (
-            <ProductCard
-              key={`${item.product?.product_id}-${i}`}
-              product={item.product}
-              reason={item.reason}
-              onAdd={onAdd}
-              className="sm:max-w-md"
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="no-scrollbar -mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-1">
-          {items.map((item, i) => (
-            <ProductCard
-              key={`${item.product?.product_id}-${i}`}
-              product={item.product}
-              reason={item.reason}
-              onAdd={onAdd}
-              className="w-44 shrink-0 snap-start sm:w-48"
-            />
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        {items.map((item, i) => (
+          <ProductCard
+            key={`${item.product?.product_id}-${i}`}
+            product={item.product}
+            reason={item.reason}
+            onAdd={onAdd}
+          />
+        ))}
+      </div>
     </section>
   );
 }
