@@ -1,8 +1,10 @@
-import { Crown, Minus, Plus } from "lucide-react";
+import { Check, Crown, Loader2, Minus, Plus, ShoppingBag } from "lucide-react";
+import { useState } from "react";
 import { ProductCard } from "./ProductCard";
 import {
   formatPrice,
   type PresentComparisonPayload,
+  type PresentPlanPayload,
   type PresentProductsPayload,
   type UiPart,
 } from "@/lib/vastraa/types";
@@ -15,6 +17,9 @@ export function UiBlock({ part, onAdd }: { part: UiPart; onAdd: AddFn }) {
   }
   if (part.component === "comparison") {
     return <ComparisonBlock payload={part.payload as PresentComparisonPayload} onAdd={onAdd} />;
+  }
+  if (part.component === "plan") {
+    return <PlanBlock payload={part.payload as PresentPlanPayload} onAdd={onAdd} />;
   }
   if (part.component === "suggestions") {
     return null;
@@ -118,6 +123,85 @@ function ComparisonBlock({ payload, onAdd }: { payload: PresentComparisonPayload
           {payload.price_delta.high_product_id} ({formatPrice(payload.price_delta.high_price)}).
         </p>
       )}
+    </section>
+  );
+}
+
+function PlanBlock({ payload, onAdd }: { payload: PresentPlanPayload; onAdd: AddFn }) {
+  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
+  const [note, setNote] = useState<string | null>(null);
+
+  const steps = Array.isArray(payload?.steps) ? payload.steps : [];
+  if (steps.length === 0) return null;
+
+  const allProducts = steps.flatMap((s) => s.products ?? []);
+  // A family (unresolved size/color) can't be added directly — same rule as a single card.
+  const addable = allProducts.filter((p) => !p.options || Object.keys(p.options).length === 0);
+  const total = allProducts.reduce((sum, p) => sum + (p.price ?? 0), 0);
+  const currency = allProducts.find((p) => p.currency)?.currency;
+
+  const addWholeLook = async () => {
+    setState("busy");
+    setNote(null);
+    let failed = 0;
+    for (const product of addable) {
+      const res = await onAdd(product.product_id);
+      if (!res.ok) failed += 1;
+    }
+    setState("done");
+    const skipped = allProducts.length - addable.length;
+    if (failed > 0 || skipped > 0) {
+      const parts = [];
+      if (failed > 0) parts.push(`${failed} couldn't be added`);
+      if (skipped > 0) parts.push(`${skipped} still need a size/color picked`);
+      setNote(parts.join(", ") + ".");
+    }
+    setTimeout(() => setState("idle"), 2500);
+  };
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-border bg-card p-4">
+      <div>
+        <h3 className="font-display text-base font-semibold text-foreground">{payload.title}</h3>
+        {payload.intro && <p className="mt-1 text-xs text-muted-foreground">{payload.intro}</p>}
+      </div>
+
+      <div className="space-y-4">
+        {steps.map((step, i) => (
+          <div key={i} className="space-y-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-brand">{step.label}</p>
+              {step.detail && <p className="text-xs text-muted-foreground">{step.detail}</p>}
+            </div>
+            {step.products && step.products.length > 0 && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {step.products.map((product, j) => (
+                  <ProductCard key={`${product.product_id}-${j}`} product={product} onAdd={onAdd} />
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {addable.length > 1 && (
+        <div className="flex flex-col gap-2 rounded-xl bg-secondary px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-sm font-semibold text-foreground">
+            Total look: {formatPrice(total, currency)}
+          </span>
+          <button
+            onClick={() => void addWholeLook()}
+            disabled={state === "busy"}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {state === "busy" && <Loader2 className="size-3.5 animate-spin" />}
+            {state === "done" && <Check className="size-3.5" />}
+            {state === "idle" && <ShoppingBag className="size-3.5" />}
+            {state === "busy" ? "Adding…" : state === "done" ? "Added" : "Add the whole look"}
+          </button>
+        </div>
+      )}
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
     </section>
   );
 }

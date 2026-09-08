@@ -45,6 +45,18 @@ export type PresentComparisonPayload = {
   };
 };
 
+export type PlanStep = {
+  label: string;
+  detail?: string;
+  products?: Product[];
+};
+
+export type PresentPlanPayload = {
+  title: string;
+  intro?: string;
+  steps: PlanStep[];
+};
+
 export type CartItem = {
   product_id: string;
   title: string;
