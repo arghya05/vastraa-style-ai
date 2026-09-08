@@ -196,15 +196,28 @@ function Index() {
             })}
 
             {chat.isStreaming && (
-              <p className="flex items-center gap-2 text-sm italic text-muted-foreground">
-                <span className="inline-flex gap-1">
-                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:0ms]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:120ms]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:240ms]" />
-                </span>
-                {chat.progress ??
-                  (chat.pendingTools > 0 ? "Vastraa is checking the catalog…" : "Stylist is typing…")}
-              </p>
+              <div className="space-y-1.5">
+                {chat.activities.length > 0 ? (
+                  chat.activities.map((activity) => (
+                    <p
+                      key={activity.id}
+                      className="flex items-center gap-2 text-sm italic text-muted-foreground"
+                    >
+                      <span className="size-1.5 animate-pulse rounded-full bg-jewel" />
+                      {activity.label}
+                    </p>
+                  ))
+                ) : (
+                  <p className="flex items-center gap-2 text-sm italic text-muted-foreground">
+                    <span className="inline-flex gap-1">
+                      <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:0ms]" />
+                      <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:120ms]" />
+                      <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:240ms]" />
+                    </span>
+                    {chat.progress ?? "Stylist is typing…"}
+                  </p>
+                )}
+              </div>
             )}
             <div ref={endRef} />
           </div>

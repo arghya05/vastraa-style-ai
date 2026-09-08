@@ -6,13 +6,45 @@ import type { Cart, ChatMessage, MessagePart, SessionInfo } from "./types";
 let idCounter = 0;
 const nextId = () => `m${++idCounter}-${Date.now()}`;
 
+export type Activity = { id: string; label: string };
+
+// Friendly labels for the live activity trail; falls back to the tool name when a tool
+// isn't listed here, so a new backend tool never breaks the UI.
+const TOOL_LABELS: Record<string, string> = {
+  search_products: "Searching the catalog…",
+  get_product_details: "Looking up product details…",
+  get_cart: "Checking your bag…",
+  add_to_cart: "Adding to your bag…",
+  update_cart_item: "Updating your bag…",
+  remove_from_cart: "Updating your bag…",
+  get_orders: "Checking your orders…",
+  get_order_status: "Checking your order status…",
+  search_policies: "Checking store policies…",
+  get_fulfillment_options: "Checking delivery options…",
+  save_memory: "Remembering that for next time…",
+  recall_memories: "Checking what I remember about you…",
+  present_products: "Preparing product cards…",
+  present_comparison: "Building the comparison…",
+  present_plan: "Putting together a plan…",
+  present_guide: "Writing a buying guide…",
+  present_order_status: "Preparing your order status…",
+  checkout: "Preparing checkout…",
+  present_suggestions: "Thinking of follow-ups…",
+  present_disclosure: "Pulling up the details…",
+  web_search: "Searching the web…",
+};
+
+function labelFor(tool: string, explicitLabel?: string): string {
+  return explicitLabel || TOOL_LABELS[tool] || `Using ${tool}…`;
+}
+
 export function useVastraaChat() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [cart, setCart] = useState<Cart>({ items: [], item_count: 0, subtotal: 0, currency: "INR" });
   const [isStreaming, setIsStreaming] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  const [pendingTools, setPendingTools] = useState(0);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState<string>("");
   const sessionRef = useRef<SessionInfo | null>(null);
@@ -80,7 +112,7 @@ export function useVastraaChat() {
       ]);
       setIsStreaming(true);
       setProgress(null);
-      setPendingTools(0);
+      setActivities([]);
 
       try {
         for await (const frame of streamChat(content, info.session_id, (fresh) => {
@@ -115,12 +147,18 @@ export function useVastraaChat() {
               setProgress(typeof data['message'] === "string" ? (data['message'] as string) : null);
               break;
             }
-            case "tool_call":
-              setPendingTools((n) => n + 1);
+            case "tool_call": {
+              const tool = typeof data['tool'] === "string" ? (data['tool'] as string) : "unknown";
+              const id = typeof data['id'] === "string" ? (data['id'] as string) : nextId();
+              const explicitLabel = typeof data['label'] === "string" ? (data['label'] as string) : undefined;
+              setActivities((prev) => [...prev, { id, label: labelFor(tool, explicitLabel) }]);
               break;
-            case "tool_result":
-              setPendingTools((n) => Math.max(0, n - 1));
+            }
+            case "tool_result": {
+              const id = typeof data['id'] === "string" ? (data['id'] as string) : null;
+              setActivities((prev) => (id ? prev.filter((a) => a.id !== id) : prev));
               break;
+            }
             case "error": {
               const msg =
                 typeof data['message'] === "string"
@@ -134,7 +172,7 @@ export function useVastraaChat() {
             }
             case "turn_complete":
               setProgress(null);
-              setPendingTools(0);
+              setActivities([]);
               break;
             default:
               break;
@@ -157,7 +195,7 @@ export function useVastraaChat() {
       } finally {
         setIsStreaming(false);
         setProgress(null);
-        setPendingTools(0);
+        setActivities([]);
         setMessages((prev) =>
           prev.filter((m) => m.id !== assistantId || m.parts.length > 0),
         );
@@ -184,7 +222,7 @@ export function useVastraaChat() {
     cart,
     isStreaming,
     progress,
-    pendingTools,
+    activities,
     connectionError,
     baseUrl,
     setBaseUrl,
