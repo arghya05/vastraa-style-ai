@@ -4,7 +4,7 @@ import { formatPrice, type Product } from "@/lib/vastraa/types";
 
 type Props = {
   product: Product;
-  reason?: string;
+  reason?: string | undefined;
   onAdd: (productId: string) => Promise<{ ok: boolean; error?: string }>;
   className?: string;
 };
