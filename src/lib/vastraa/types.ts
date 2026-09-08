@@ -66,7 +66,7 @@ export type Cart = {
 export type SessionInfo = {
   session_id: string;
   user_id?: string;
-  user_name?: string;
+  name?: string;
   tier?: string;
 };
 

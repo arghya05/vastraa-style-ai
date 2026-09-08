@@ -71,7 +71,7 @@ function Index() {
         <div className="flex items-center gap-2">
           {chat.session?.tier && (
             <span className="hidden rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground sm:inline">
-              {chat.session.user_name ? `${chat.session.user_name} · ` : ""}
+              {chat.session.name ? `${chat.session.name} · ` : ""}
               {chat.session.tier}
             </span>
           )}
