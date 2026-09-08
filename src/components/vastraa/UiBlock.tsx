@@ -10,10 +10,10 @@ import {
 type AddFn = (productId: string) => Promise<{ ok: boolean; error?: string }>;
 
 export function UiBlock({ part, onAdd }: { part: UiPart; onAdd: AddFn }) {
-  if (part.component === "present_products") {
+  if (part.component === "products") {
     return <ProductsBlock payload={part.payload as PresentProductsPayload} onAdd={onAdd} />;
   }
-  if (part.component === "present_comparison") {
+  if (part.component === "comparison") {
     return <ComparisonBlock payload={part.payload as PresentComparisonPayload} onAdd={onAdd} />;
   }
   return (
