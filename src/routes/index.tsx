@@ -1,24 +1,268 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { ArrowUp, Settings2, ShoppingBag, Sparkle, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CartPanel } from "@/components/vastraa/CartPanel";
+import { UiBlock } from "@/components/vastraa/UiBlock";
+import { setApiBaseUrl } from "@/lib/vastraa/config";
+import { useVastraaChat } from "@/lib/vastraa/useVastraaChat";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title: "Vastraa Stylist — Chat your way to the right outfit" },
+      {
+        name: "description",
+        content:
+          "Chat with the Vastraa AI stylist for kurtas, sarees, jeans and more. Get picks, comparisons and add to your bag without browsing.",
+      },
+      { property: "og:title", content: "Vastraa Stylist — Chat your way to the right outfit" },
+      {
+        property: "og:description",
+        content: "An AI stylist for Vastraa apparel: personalised picks, comparisons and instant add-to-bag.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
+const STARTERS = [
+  "Show me cotton kurtas under ₹1500",
+  "I need something for a wedding",
+  "Compare your two best-selling jeans",
+];
+
 function Index() {
+  const chat = useVastraaChat();
+  const [input, setInput] = useState("");
+  const [cartOpen, setCartOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [urlDraft, setUrlDraft] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setUrlDraft(chat.baseUrl);
+    if (!chat.baseUrl) setShowSettings(true);
+  }, [chat.baseUrl]);
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.messages, chat.progress, chat.isStreaming]);
+
+  const submit = (text: string) => {
+    setInput("");
+    void chat.sendMessage(text);
+  };
+
+  const saveUrl = () => {
+    setApiBaseUrl(urlDraft);
+    chat.setBaseUrl(urlDraft.trim().replace(/\/+$/, ""));
+    setShowSettings(false);
+  };
+
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-20 flex items-center justify-between border-b border-border/70 bg-background/85 px-4 py-3 backdrop-blur">
+        <div className="flex items-baseline gap-2">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Vastraa</h1>
+          <span className="text-xs uppercase tracking-[0.2em] text-brand">Stylist</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {chat.session?.tier && (
+            <span className="hidden rounded-full bg-accent px-3 py-1 text-xs font-medium text-accent-foreground sm:inline">
+              {chat.session.user_name ? `${chat.session.user_name} · ` : ""}
+              {chat.session.tier}
+            </span>
+          )}
+          <button
+            onClick={() => setShowSettings((v) => !v)}
+            aria-label="Backend settings"
+            className="rounded-full border border-border p-2 text-muted-foreground hover:bg-secondary"
+          >
+            <Settings2 className="size-4" />
+          </button>
+          <button
+            onClick={() => setCartOpen(true)}
+            aria-label="Open bag"
+            className="relative rounded-full border border-border p-2 text-foreground hover:bg-secondary lg:hidden"
+          >
+            <ShoppingBag className="size-4" />
+            {chat.cart.item_count > 0 && (
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-brand text-[10px] font-bold text-brand-foreground">
+                {chat.cart.item_count}
+              </span>
+            )}
+          </button>
+          <div className="relative hidden items-center gap-2 rounded-full border border-border px-3 py-1.5 lg:flex">
+            <ShoppingBag className="size-4 text-foreground" />
+            <span className="text-xs font-semibold text-foreground">{chat.cart.item_count}</span>
+          </div>
+        </div>
+      </header>
+
+      {showSettings && (
+        <div className="border-b border-border bg-card px-4 py-3">
+          <label className="block text-xs font-medium text-muted-foreground" htmlFor="base-url">
+            Vastraa backend URL (your tunnel's HTTPS address)
+          </label>
+          <div className="mt-2 flex gap-2">
+            <input
+              id="base-url"
+              value={urlDraft}
+              onChange={(e) => setUrlDraft(e.target.value)}
+              placeholder="https://something.trycloudflare.com"
+              className="flex-1 rounded-full border border-input bg-background px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              onClick={saveUrl}
+              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {chat.connectionError && (
+        <div className="mx-4 mt-3 rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {chat.connectionError}
+        </div>
+      )}
+
+      <div className="mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-4">
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex-1 space-y-5 overflow-y-auto pb-4">
+            {chat.messages.length === 0 && (
+              <div className="rounded-3xl border border-border bg-card/70 p-6">
+                <Sparkle className="size-5 text-brand" />
+                <h2 className="mt-3 font-display text-2xl font-semibold text-foreground">
+                  Tell me what you're dressing for.
+                </h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Kurtas, sarees, denim, footwear — I'll pull the pieces, compare them, and drop your
+                  favourites straight into the bag.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {STARTERS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => submit(s)}
+                      className="rounded-full border border-brand/40 bg-background px-4 py-2 text-sm text-foreground hover:bg-accent"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {chat.messages.map((msg) => {
+              if (msg.role === "user") {
+                return (
+                  <div key={msg.id} className="flex justify-end">
+                    <div className="max-w-[80%] rounded-3xl rounded-br-lg bg-primary px-4 py-2.5 text-sm text-primary-foreground">
+                      {msg.parts.map((p, i) => (p.type === "text" ? <span key={i}>{p.text}</span> : null))}
+                    </div>
+                  </div>
+                );
+              }
+              if (msg.role === "error") {
+                return (
+                  <div
+                    key={msg.id}
+                    className="max-w-[85%] rounded-2xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive"
+                  >
+                    {msg.parts.map((p, i) => (p.type === "text" ? <span key={i}>{p.text}</span> : null))}
+                  </div>
+                );
+              }
+              return (
+                <div key={msg.id} className="space-y-3">
+                  {msg.parts.map((part, i) =>
+                    part.type === "text" ? (
+                      <p
+                        key={i}
+                        className="max-w-[85%] whitespace-pre-wrap text-sm leading-relaxed text-foreground"
+                      >
+                        {part.text}
+                      </p>
+                    ) : (
+                      <UiBlock key={i} part={part} onAdd={chat.addToCart} />
+                    ),
+                  )}
+                </div>
+              );
+            })}
+
+            {chat.isStreaming && (
+              <p className="flex items-center gap-2 text-sm italic text-muted-foreground">
+                <span className="inline-flex gap-1">
+                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:0ms]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:120ms]" />
+                  <span className="size-1.5 animate-bounce rounded-full bg-brand [animation-delay:240ms]" />
+                </span>
+                {chat.progress ??
+                  (chat.pendingTools > 0 ? "Vastraa is checking the catalog…" : "Stylist is typing…")}
+              </p>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit(input);
+            }}
+            className="sticky bottom-4 flex items-end gap-2 rounded-3xl border border-border bg-card p-2 shadow-sm"
+          >
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit(input);
+                }
+              }}
+              rows={1}
+              placeholder="Ask for kurtas, sarees, denim…"
+              className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || chat.isStreaming}
+              aria-label="Send message"
+              className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+          </form>
+        </main>
+
+        <aside className="hidden w-80 shrink-0 self-start rounded-3xl border border-border bg-sidebar lg:block lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)]">
+          <CartPanel cart={chat.cart} />
+        </aside>
+      </div>
+
+      {cartOpen && (
+        <div className="fixed inset-0 z-30 flex justify-end bg-foreground/30 lg:hidden">
+          <div className="h-full w-80 max-w-[85vw] bg-sidebar">
+            <div className="flex justify-end p-2">
+              <button
+                onClick={() => setCartOpen(false)}
+                aria-label="Close bag"
+                className="rounded-full p-2 text-muted-foreground hover:bg-secondary"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="h-[calc(100%-3rem)]">
+              <CartPanel cart={chat.cart} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
