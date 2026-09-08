@@ -20,82 +20,149 @@ export type RecognitionHandle = { stop: () => void };
 
 let lastLanguageCode = "en-IN";
 
-/** Records from the mic until stop() is called, then transcribes the clip via the
- * backend's Sarvam proxy. onResult fires once with the transcript; onEnd always
- * fires after (success or failure) so the caller can reset its "listening" state. */
+function wsBaseUrl(): string | null {
+  const base = getApiBaseUrl();
+  if (!base) return null;
+  return base.replace(/^http/, "ws");
+}
+
+function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(input.length * 2);
+  const view = new DataView(buffer);
+  for (let i = 0; i < input.length; i++) {
+    const s = Math.max(-1, Math.min(1, input[i] ?? 0));
+    view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return buffer;
+}
+
+// Sarvam's realtime stream is fixed at 16kHz; the mic's AudioContext runs at
+// whatever the OS gives it (usually 44.1/48kHz), so every chunk is decimated down
+// here. Nearest-neighbour is good enough for speech-to-text, not hi-fi audio.
+function downsampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === 16000) return input;
+  const ratio = inputSampleRate / 16000;
+  const outLength = Math.round(input.length / ratio);
+  const output = new Float32Array(outLength);
+  for (let i = 0; i < outLength; i++) output[i] = input[Math.floor(i * ratio)] ?? 0;
+  return output;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/** Streams the mic live to Sarvam's realtime STT (via the backend's WebSocket relay)
+ * until stop() is called. onPartial fires repeatedly with the in-progress transcript
+ * for live captioning; onResult fires once at the end with the final combined text.
+ * onEnd always fires after, so the caller can reset its "listening" state. */
 export function startListening(
   onResult: (transcript: string) => void,
   onEnd: () => void,
   onError: (message: string) => void,
+  onPartial?: (text: string) => void,
 ): RecognitionHandle | null {
   if (!isVoiceInputSupported()) {
     onError("Voice input isn't supported in this browser.");
     return null;
   }
+  const base = wsBaseUrl();
+  if (!base) {
+    onError("Set the backend URL first.");
+    return null;
+  }
 
-  let cancelled = false;
-  let recorder: MediaRecorder | null = null;
-  const chunks: Blob[] = [];
+  let stopped = false;
+  let stream: MediaStream | null = null;
+  let audioCtx: AudioContext | null = null;
+  let finalText = "";
+  const socket = new WebSocket(`${base}/api/voice/stream?language_code=auto`);
 
-  navigator.mediaDevices
-    .getUserMedia({ audio: true })
-    .then((stream) => {
-      if (cancelled) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
+  const cleanup = () => {
+    stream?.getTracks().forEach((t) => t.stop());
+    void audioCtx?.close();
+    stream = null;
+    audioCtx = null;
+  };
+
+  socket.onopen = () => {
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((s) => {
+        if (stopped) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        // ScriptProcessorNode is deprecated but universally supported and far less
+        // code than an AudioWorklet — fine for a short-lived push-to-talk capture.
+        audioCtx = new AudioContext();
+        const source = audioCtx.createMediaStreamSource(s);
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        const silence = audioCtx.createGain();
+        silence.gain.value = 0; // processor must connect to a destination to fire, but must not be heard
+        processor.onaudioprocess = (e) => {
+          if (socket.readyState !== WebSocket.OPEN) return;
+          const down = downsampleTo16k(e.inputBuffer.getChannelData(0), audioCtx!.sampleRate);
+          const pcm = floatTo16BitPCM(down);
+          socket.send(JSON.stringify({ event: "audio_input", audio: arrayBufferToBase64(pcm) }));
+        };
+        source.connect(processor);
+        processor.connect(silence);
+        silence.connect(audioCtx.destination);
+      })
+      .catch(() => {
+        onError("Microphone access was blocked.");
+        socket.close();
+      });
+  };
+
+  socket.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data as string) as {
+        event?: string;
+        text?: string;
+        language?: string;
+        message?: string;
+      };
+      if (msg.event === "transcript.partial" && msg.text) {
+        onPartial?.((finalText + " " + msg.text).trim());
+      } else if (msg.event === "transcript.final" && msg.text) {
+        finalText = (finalText + " " + msg.text).trim();
+        onPartial?.(finalText);
+      } else if (msg.event === "error") {
+        onError(msg.message || "Voice input failed — try again.");
       }
-      recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        void transcribe(new Blob(chunks, { type: "audio/webm" }), onResult, onError).finally(onEnd);
-      };
-      recorder.start();
-    })
-    .catch(() => {
-      onError("Microphone access was blocked.");
-      onEnd();
-    });
+    } catch {
+      // Ignore malformed frames rather than crash the session.
+    }
+  };
+
+  socket.onerror = () => {
+    onError("Voice input failed — try again.");
+  };
+
+  socket.onclose = () => {
+    cleanup();
+    if (finalText) onResult(finalText);
+    else if (!stopped) onError("Didn't catch that — try again.");
+    onEnd();
+  };
 
   return {
     stop: () => {
-      cancelled = true;
-      if (recorder && recorder.state !== "inactive") recorder.stop();
+      stopped = true;
+      cleanup();
+      if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: "end" }));
+      else socket.close();
     },
   };
-}
-
-async function transcribe(
-  audio: Blob,
-  onResult: (transcript: string) => void,
-  onError: (message: string) => void,
-): Promise<void> {
-  if (audio.size < 500) {
-    onError("Didn't catch that — try again.");
-    return;
-  }
-  const base = getApiBaseUrl();
-  if (!base) {
-    onError("Set the backend URL first.");
-    return;
-  }
-  try {
-    const form = new FormData();
-    form.append("file", audio, "speech.webm");
-    const res = await fetch(`${base}/api/voice/stt`, { method: "POST", body: form });
-    if (!res.ok) {
-      onError(res.status === 503 ? "Voice isn't set up on the backend yet." : "Voice input failed — try again.");
-      return;
-    }
-    const body = (await res.json()) as { transcript?: string; language_code?: string };
-    if (body.language_code) lastLanguageCode = body.language_code;
-    if (body.transcript?.trim()) onResult(body.transcript.trim());
-    else onError("Didn't catch that — try again.");
-  } catch {
-    onError("Voice input failed — try again.");
-  }
 }
 
 let currentAudio: HTMLAudioElement | null = null;

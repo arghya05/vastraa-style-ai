@@ -81,13 +81,20 @@ function Index() {
       return;
     }
     setVoiceError(null);
+    setInput("");
     recognitionRef.current = startListening(
       (transcript) => submit(transcript),
       () => {
         setListening(false);
         recognitionRef.current = null;
       },
-      (message) => setVoiceError(message),
+      (message) => {
+        setVoiceError(message);
+        setInput("");
+      },
+      // Live captioning: shows the in-progress transcript in the composer as the
+      // customer speaks, so the mic reads as an active conversation, not a black box.
+      (partial) => setInput(partial),
     );
     if (recognitionRef.current) setListening(true);
   };
