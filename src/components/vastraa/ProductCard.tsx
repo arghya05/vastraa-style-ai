@@ -60,9 +60,16 @@ export function ProductCard({ product, reason, onAdd, className = "" }: Props) {
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-3">
-        <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-          {product.title}
-        </h4>
+        <div>
+          {product.brand && (
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand">
+              {product.brand}
+            </p>
+          )}
+          <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+            {product.title}
+          </h4>
+        </div>
         <div className="flex items-baseline gap-2">
           <span className="font-display text-lg font-semibold text-foreground">
             {formatPrice(product.price, product.currency)}
@@ -75,6 +82,23 @@ export function ProductCard({ product, reason, onAdd, className = "" }: Props) {
             </span>
           )}
         </div>
+        {product.short_description && (
+          <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">
+            {product.short_description}
+          </p>
+        )}
+        {details.length > 0 && (
+          <ul className="flex flex-wrap gap-1">
+            {details.map((d) => (
+              <li
+                key={d}
+                className="rounded-full bg-secondary px-2 py-0.5 text-[10px] capitalize text-secondary-foreground"
+              >
+                {d}
+              </li>
+            ))}
+          </ul>
+        )}
         {variant && <p className="text-xs text-muted-foreground">{variant}</p>}
         {reason && <p className="line-clamp-3 text-xs italic text-jewel">{reason}</p>}
 
