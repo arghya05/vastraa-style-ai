@@ -80,15 +80,22 @@ export function startListening(
 
   let stopped = false;
   let stream: MediaStream | null = null;
-  let audioCtx: AudioContext | null = null;
   let finalText = "";
   const socket = new WebSocket(`${base}/api/voice/stream?language_code=auto`);
 
+  // Created synchronously, inside the click handler's call stack (startListening is
+  // called directly from the mic button's onClick) — Chrome's autoplay policy can
+  // silently leave an AudioContext "suspended" (onaudioprocess never fires, no error)
+  // if it's instead created later inside an async .then() callback, which is outside
+  // that gesture. Creating and resuming it here, before anything async happens, avoids
+  // that trap.
+  const audioCtx = new AudioContext();
+  void audioCtx.resume();
+
   const cleanup = () => {
     stream?.getTracks().forEach((t) => t.stop());
-    void audioCtx?.close();
+    void audioCtx.close();
     stream = null;
-    audioCtx = null;
   };
 
   socket.onopen = () => {
@@ -100,16 +107,16 @@ export function startListening(
           return;
         }
         stream = s;
+        void audioCtx.resume();
         // ScriptProcessorNode is deprecated but universally supported and far less
         // code than an AudioWorklet — fine for a short-lived push-to-talk capture.
-        audioCtx = new AudioContext();
         const source = audioCtx.createMediaStreamSource(s);
         const processor = audioCtx.createScriptProcessor(4096, 1, 1);
         const silence = audioCtx.createGain();
         silence.gain.value = 0; // processor must connect to a destination to fire, but must not be heard
         processor.onaudioprocess = (e) => {
           if (socket.readyState !== WebSocket.OPEN) return;
-          const down = downsampleTo16k(e.inputBuffer.getChannelData(0), audioCtx!.sampleRate);
+          const down = downsampleTo16k(e.inputBuffer.getChannelData(0), audioCtx.sampleRate);
           const pcm = floatTo16BitPCM(down);
           socket.send(JSON.stringify({ event: "audio_input", audio: arrayBufferToBase64(pcm) }));
         };
@@ -138,6 +145,10 @@ export function startListening(
         onPartial?.(finalText);
       } else if (msg.event === "error") {
         onError(msg.message || "Voice input failed — try again.");
+      } else if (msg.event === "session.end") {
+        // Sarvam doesn't always close the socket itself after this — close it from
+        // our side so onclose (which reports the result) actually fires promptly.
+        socket.close();
       }
     } catch {
       // Ignore malformed frames rather than crash the session.
