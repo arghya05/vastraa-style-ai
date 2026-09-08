@@ -1,9 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowUp, Settings2, ShoppingBag, Sparkle, X } from "lucide-react";
+import { ArrowUp, Mic, Settings2, ShoppingBag, Sparkle, Volume2, VolumeX, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CartPanel } from "@/components/vastraa/CartPanel";
 import { UiBlock } from "@/components/vastraa/UiBlock";
 import { setApiBaseUrl } from "@/lib/vastraa/config";
+import {
+  isVoiceInputSupported,
+  isVoiceOutputSupported,
+  startListening,
+  stopSpeaking,
+  type RecognitionHandle,
+} from "@/lib/vastraa/speech";
 import { useVastraaChat } from "@/lib/vastraa/useVastraaChat";
 
 export const Route = createFileRoute("/")({
@@ -39,7 +46,20 @@ function Index() {
   const [cartOpen, setCartOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [urlDraft, setUrlDraft] = useState("");
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // Both start false so server and first client render agree; a mount-only effect
+  // below flips them once the browser's real support is known, avoiding a hydration
+  // mismatch (these APIs don't exist during SSR).
+  const [micSupported, setMicSupported] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<RecognitionHandle | null>(null);
+
+  useEffect(() => {
+    setMicSupported(isVoiceInputSupported());
+    setSpeechSupported(isVoiceOutputSupported());
+  }, []);
 
   useEffect(() => {
     setUrlDraft(chat.baseUrl);
@@ -53,6 +73,23 @@ function Index() {
   const submit = (text: string) => {
     setInput("");
     void chat.sendMessage(text);
+  };
+
+  const toggleMic = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    setVoiceError(null);
+    recognitionRef.current = startListening(
+      (transcript) => submit(transcript),
+      () => {
+        setListening(false);
+        recognitionRef.current = null;
+      },
+      (message) => setVoiceError(message),
+    );
+    if (recognitionRef.current) setListening(true);
   };
 
   const saveUrl = () => {
@@ -74,6 +111,19 @@ function Index() {
               {chat.session.name ? `${chat.session.name} · ` : ""}
               {chat.session.tier}
             </span>
+          )}
+          {speechSupported && (
+            <button
+              onClick={() => {
+                if (chat.autoSpeak) stopSpeaking();
+                chat.setAutoSpeak((v) => !v);
+              }}
+              aria-label={chat.autoSpeak ? "Mute the stylist's voice" : "Unmute the stylist's voice"}
+              title={chat.autoSpeak ? "Voice replies on" : "Voice replies off"}
+              className="rounded-full border border-border p-2 text-muted-foreground hover:bg-secondary"
+            >
+              {chat.autoSpeak ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+            </button>
           )}
           <button
             onClick={() => setShowSettings((v) => !v)}
@@ -222,6 +272,9 @@ function Index() {
             <div ref={endRef} />
           </div>
 
+          {voiceError && (
+            <p className="mb-1 px-2 text-xs text-destructive">{voiceError}</p>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -229,6 +282,22 @@ function Index() {
             }}
             className="sticky bottom-4 flex items-end gap-2 rounded-3xl border border-border bg-card p-2 shadow-sm"
           >
+            {micSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={chat.isStreaming}
+                aria-label={listening ? "Stop recording" : "Speak your request"}
+                title={listening ? "Listening… tap to stop" : "Speak your request"}
+                className={`flex size-10 shrink-0 items-center justify-center rounded-full border transition-colors disabled:opacity-50 ${
+                  listening
+                    ? "animate-pulse border-destructive bg-destructive/10 text-destructive"
+                    : "border-border text-muted-foreground hover:bg-secondary"
+                }`}
+              >
+                <Mic className="size-4" />
+              </button>
+            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -239,14 +308,14 @@ function Index() {
                 }
               }}
               rows={1}
-              placeholder="Ask for kurtas, sarees, denim…"
+              placeholder={listening ? "Listening…" : "Ask for kurtas, sarees, denim…"}
               className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
             />
             <button
               type="submit"
               disabled={!input.trim() || chat.isStreaming}
               aria-label="Send message"
-              className="flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               <ArrowUp className="size-4" />
             </button>

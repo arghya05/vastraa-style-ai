@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addToCart, createSession, ensureSession, fetchCart, streamChat } from "./client";
 import { getApiBaseUrl } from "./config";
+import { isVoiceOutputSupported, speak, stopSpeaking } from "./speech";
 import type { Cart, ChatMessage, MessagePart, SessionInfo } from "./types";
 
 let idCounter = 0;
@@ -47,7 +48,16 @@ export function useVastraaChat() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [baseUrl, setBaseUrl] = useState<string>("");
+  // Starts false on every render (server included) so hydration matches; a mount-only
+  // effect flips it once the browser's real capability is known.
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const sessionRef = useRef<SessionInfo | null>(null);
+  const autoSpeakRef = useRef(autoSpeak);
+  autoSpeakRef.current = autoSpeak;
+
+  useEffect(() => {
+    if (isVoiceOutputSupported()) setAutoSpeak(true);
+  }, []);
 
   useEffect(() => {
     setBaseUrl(getApiBaseUrl());
@@ -104,6 +114,8 @@ export function useVastraaChat() {
         }
       }
 
+      stopSpeaking();
+      let spokenText = "";
       const assistantId = nextId();
       setMessages((prev) => [
         ...prev,
@@ -125,6 +137,7 @@ export function useVastraaChat() {
               const t = typeof data['text'] === "string" ? (data['text'] as string) : "";
               if (t) {
                 setProgress(null);
+                spokenText += t;
                 appendToAssistant(assistantId, { type: "text", text: t });
               }
               break;
@@ -173,6 +186,7 @@ export function useVastraaChat() {
             case "turn_complete":
               setProgress(null);
               setActivities([]);
+              if (autoSpeakRef.current && spokenText.trim()) void speak(spokenText);
               break;
             default:
               break;
@@ -226,6 +240,8 @@ export function useVastraaChat() {
     connectionError,
     baseUrl,
     setBaseUrl,
+    autoSpeak,
+    setAutoSpeak,
     sendMessage,
     addToCart: add,
     reconnect: boot,
